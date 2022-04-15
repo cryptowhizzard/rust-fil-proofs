@@ -8,18 +8,28 @@ use bellperson::{
 use blstrs::Scalar as Fr;
 use ff::{Field, PrimeField};
 use generic_array::typenum::{Unsigned, U2, U4, U8};
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::{AssignedCell, Layouter},
+    pasta::{Fp, Fq},
+    plonk::{self, Advice, Column, Fixed},
+};
 use merkletree::{
     hash::{Algorithm, Hashable},
     merkle::Element,
 };
-use neptune::{circuit::poseidon_hash, Poseidon};
-use pasta_curves::{Fp, Fq};
+use neptune::{
+    circuit::poseidon_hash,
+    halo2_circuit::{self, PoseidonChip, PoseidonConfig},
+    Poseidon,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    Domain, FieldArity, HashFunction, Hasher, PoseidonArity, PoseidonMDArity, POSEIDON_CONSTANTS,
-    POSEIDON_CONSTANTS_2, POSEIDON_CONSTANTS_2_PALLAS, POSEIDON_CONSTANTS_2_VESTA,
-    POSEIDON_MD_CONSTANTS, POSEIDON_MD_CONSTANTS_PALLAS, POSEIDON_MD_CONSTANTS_VESTA,
+    ColumnSpec, Domain, FieldArity, HaloHasher, HashFunction, Hasher, PoseidonArity,
+    PoseidonMDArity, POSEIDON_CONSTANTS, POSEIDON_CONSTANTS_2, POSEIDON_CONSTANTS_2_PALLAS,
+    POSEIDON_CONSTANTS_2_VESTA, POSEIDON_MD_CONSTANTS, POSEIDON_MD_CONSTANTS_PALLAS,
+    POSEIDON_MD_CONSTANTS_VESTA,
 };
 
 #[derive(Default, Copy, Clone, Debug)]
@@ -628,5 +638,87 @@ impl Hasher for PoseidonHasher<Fq> {
 
     fn name() -> String {
         "poseidon_hasher_vesta".into()
+    }
+}
+
+impl<F> HaloHasher for PoseidonHasher<F>
+where
+    Self: Hasher,
+    Self::Domain: Domain<Field = F>,
+    F: FieldExt,
+{
+    type Config = PoseidonConfig;
+    type Assigned = AssignedCell<F, F>;
+    type Digest = Self::Assigned;
+
+    fn column_spec<A>() -> ColumnSpec
+    where
+        A: PoseidonArity<<Self::Domain as Domain>::Field>,
+    {
+        let width = A::to_usize() + 1;
+        ColumnSpec {
+            advice_eq: width,
+            advice_neq: 1,
+            // Poseidon uses `2 * width` number of fixed columns.
+            fixed_eq: 1,
+            fixed_neq: 2 * width - 1,
+        }
+    }
+
+    fn configure<A>(
+        meta: &mut plonk::ConstraintSystem<F>,
+        advice_eq: &[Column<Advice>],
+        advice_neq: &[Column<Advice>],
+        fixed_eq: &[Column<Fixed>],
+        fixed_neq: &[Column<Fixed>],
+    ) -> Self::Config
+    where
+        A: PoseidonArity<F>,
+    {
+        let num_cols = Self::column_spec::<A>();
+        assert!(advice_eq.len() >= num_cols.advice_eq);
+        assert!(advice_neq.len() >= num_cols.advice_neq);
+        assert!(fixed_eq.len() >= num_cols.fixed_eq);
+        assert!(fixed_neq.len() >= num_cols.fixed_neq);
+
+        let state = advice_eq[..num_cols.advice_eq].to_vec();
+        let extra = advice_neq[0].clone();
+
+        let mut fixed = Vec::with_capacity(num_cols.fixed_eq + num_cols.fixed_neq);
+        fixed.push(fixed_eq[0].clone());
+        fixed.extend_from_slice(&fixed_neq[..num_cols.fixed_neq]);
+
+        PoseidonChip::<F, A>::configure(meta, state, extra, fixed)
+    }
+
+    fn hash_circuit(
+        layouter: impl Layouter<F>,
+        config: Self::Config,
+        preimage: &[Self::Assigned],
+    ) -> Result<Self::Digest, plonk::Error> {
+        let arity = preimage.len();
+        match arity {
+            2 => {
+                let consts = POSEIDON_CONSTANTS.get::<FieldArity<F, U2>>().unwrap();
+                halo2_circuit::poseidon_hash(layouter, config, preimage, consts)
+            }
+            4 => {
+                let consts = POSEIDON_CONSTANTS.get::<FieldArity<F, U4>>().unwrap();
+                halo2_circuit::poseidon_hash(layouter, config, preimage, consts)
+            }
+            8 => {
+                let consts = POSEIDON_CONSTANTS.get::<FieldArity<F, U8>>().unwrap();
+                halo2_circuit::poseidon_hash(layouter, config, preimage, consts)
+            }
+            _ => panic!("arity-{} Poseidon constants not found for field", arity),
+        }
+    }
+
+    fn hash_circuit_packed(
+        layouter: impl Layouter<F>,
+        config: Self::Config,
+        preimage: &[AssignedCell<F, F>],
+    ) -> Result<AssignedCell<F, F>, plonk::Error> {
+        Self::hash_circuit(layouter, config, preimage)
     }
 }

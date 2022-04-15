@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::convert::TryInto;
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 
@@ -8,15 +9,20 @@ use bellperson::{
 };
 use blstrs::Scalar as Fr;
 use ff::PrimeField;
+use halo2_gadgets::sha256::{AssignedBits, Sha256Chip, Sha256Config, DIGEST_SIZE};
+use halo2_proofs::{
+    circuit::{AssignedCell, Layouter},
+    pasta::{Fp, Fq},
+    plonk::{self, Advice, Column, Fixed},
+};
 use merkletree::{
     hash::{Algorithm, Hashable},
     merkle::Element,
 };
-use pasta_curves::{Fp, Fq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
-use crate::{Domain, HashFunction, Hasher};
+use crate::{ColumnSpec, Domain, HaloHasher, HashFunction, Hasher, PoseidonArity};
 
 #[derive(Copy, Clone, Default)]
 pub struct Sha256Domain<F> {
@@ -544,5 +550,66 @@ impl Hasher for Sha256Hasher<Fq> {
 
     fn name() -> String {
         "sha256_hasher_vesta".into()
+    }
+}
+
+impl HaloHasher for Sha256Hasher<Fp> {
+    type Config = Sha256Config;
+    type Assigned = AssignedBits<32>;
+    type Digest = [Self::Assigned; DIGEST_SIZE];
+
+    fn column_spec<A>() -> ColumnSpec
+    where
+        A: PoseidonArity<<Self::Domain as Domain>::Field>,
+    {
+        ColumnSpec {
+            advice_eq: 6,
+            advice_neq: 1,
+            fixed_eq: 0,
+            fixed_neq: 0,
+        }
+    }
+
+    fn configure<A>(
+        meta: &mut plonk::ConstraintSystem<<Self::Domain as Domain>::Field>,
+        advice_eq: &[Column<Advice>],
+        advice_neq: &[Column<Advice>],
+        _fixed_eq: &[Column<Fixed>],
+        _fixed_neq: &[Column<Fixed>],
+    ) -> Self::Config
+    where
+        A: PoseidonArity<<Self::Domain as Domain>::Field>,
+    {
+        let num_cols = Self::column_spec::<A>();
+        assert!(advice_eq.len() >= num_cols.advice_eq);
+        assert!(advice_neq.len() >= num_cols.advice_neq);
+
+        let digest: [Column<Advice>; 2] = advice_eq[..2].try_into().unwrap();
+
+        let mut extra = Vec::with_capacity(5);
+        extra.extend_from_slice(&advice_eq[2..6]);
+        extra.push(advice_neq[0].clone());
+        let extra: [Column<Advice>; 5] = extra.try_into().unwrap();
+
+        Sha256Chip::configure(meta, digest, extra)
+    }
+
+    fn hash_circuit(
+        layouter: impl Layouter<Fp>,
+        config: Self::Config,
+        preimage: &[Self::Assigned],
+    ) -> Result<Self::Digest, plonk::Error> {
+        halo2_gadgets::sha256::sha256_hash(layouter, config, preimage)
+    }
+
+    fn hash_circuit_packed(
+        _layouter: impl Layouter<<Self::Domain as Domain>::Field>,
+        _config: Self::Config,
+        _preimage: &[AssignedCell<<Self::Domain as Domain>::Field, <Self::Domain as Domain>::Field>],
+    ) -> Result<
+        AssignedCell<<Self::Domain as Domain>::Field, <Self::Domain as Domain>::Field>,
+        plonk::Error,
+    > {
+        unimplemented!("TODO: implement bit packing");
     }
 }

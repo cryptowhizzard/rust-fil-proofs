@@ -18,13 +18,16 @@ ff = "0.11.0"
 anyhow = "1.0.34"
 serde = "1.0.117"
 rand = "0.8.0"
-neptune = { git = "https://github.com/filecoin-project/neptune", branch = "fr-as-trait", optional = true, features = ["bls", "pasta", "arity2", "arity4", "arity8", "arity11", "arity16", "arity24", "arity36"] }
-pasta_curves = { git = "https://github.com/zcash/pasta_curves", rev = "2796b6b", features = ["gpu"] }
+# neptune = { git = "https://github.com/filecoin-project/neptune", branch = "fr-as-trait", optional = true, features = ["bls", "pasta", "arity2", "arity4", "arity8", "arity11", "arity16", "arity24", "arity36"] }
+# pasta_curves = { git = "https://github.com/zcash/pasta_curves", rev = "2796b6b", features = ["gpu"] }
+neptune = { git = "https://github.com/filecoin-project/neptune", branch = "fr-as-trait-halo2-circuit", optional = true, features = ["bls", "pasta", "arity2", "arity4", "arity8", "arity11", "arity16", "arity24", "arity36"] }
 lazy_static = { version = "1.4.0", optional = true }
 blake2s_simd = { version = "0.5.11", optional = true }
 sha2 = { version = "0.9.2", optional = true }
 typemap = { version = "0.3.3", optional = true }
 hex = "0.4.2"
+halo2_gadgets = { git = "https://github.com/drpetervannostrand/halo2", branch = "sha256-chip" }
+halo2_proofs = { git = "https://github.com/drpetervannostrand/halo2", branch = "sha256-chip" }
 
 [features]
 default = ["opencl", "blake2s", "poseidon", "sha256"]
@@ -35,7 +38,7 @@ opencl = ["bellperson/opencl", "neptune/opencl"]
 # available hashers
 blake2s = ["blake2s_simd"]
 poseidon = ["neptune", "lazy_static", "typemap"]
-sha256 = ["sha2"]
+sha256 = ["sha2", "halo2_gadgets/unstable"]
 
 [dev-dependencies]
 rand_xorshift = "0.3.0"

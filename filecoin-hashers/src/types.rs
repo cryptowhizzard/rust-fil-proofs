@@ -12,6 +12,11 @@ use bellperson::{
 use blstrs::Scalar as Fr;
 use ec_gpu::GpuField;
 use ff::{Field, PrimeField};
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::{AssignedCell, Layouter},
+    plonk::{self, Advice, Column, Fixed},
+};
 use merkletree::{
     hash::{Algorithm as LightAlgorithm, Hashable as LightHashable},
     merkle::Element,
@@ -143,4 +148,49 @@ pub trait Hasher: Clone + Debug + Eq + Default + Send + Sync {
     type Function: HashFunction<Self::Domain>;
 
     fn name() -> String;
+}
+
+pub struct ColumnSpec {
+    pub advice_eq: usize,
+    pub advice_neq: usize,
+    pub fixed_eq: usize,
+    pub fixed_neq: usize,
+}
+
+pub trait HaloHasher: Hasher
+where
+    <Self::Domain as Domain>::Field: FieldExt,
+{
+    type Config: Clone;
+    type Assigned;
+    type Digest;
+
+    fn column_spec<A>() -> ColumnSpec
+    where
+        A: PoseidonArity<<Self::Domain as Domain>::Field>;
+
+    fn configure<A>(
+        meta: &mut plonk::ConstraintSystem<<Self::Domain as Domain>::Field>,
+        advice_eq: &[Column<Advice>],
+        advice_neq: &[Column<Advice>],
+        fixed_eq: &[Column<Fixed>],
+        fixed_neq: &[Column<Fixed>],
+    ) -> Self::Config
+    where
+        A: PoseidonArity<<Self::Domain as Domain>::Field>;
+
+    fn hash_circuit(
+        layouter: impl Layouter<<Self::Domain as Domain>::Field>,
+        config: Self::Config,
+        preimage: &[Self::Assigned],
+    ) -> Result<Self::Digest, plonk::Error>;
+
+    fn hash_circuit_packed(
+        layouter: impl Layouter<<Self::Domain as Domain>::Field>,
+        config: Self::Config,
+        preimage: &[AssignedCell<<Self::Domain as Domain>::Field, <Self::Domain as Domain>::Field>],
+    ) -> Result<
+        AssignedCell<<Self::Domain as Domain>::Field, <Self::Domain as Domain>::Field>,
+        plonk::Error,
+    >;
 }
