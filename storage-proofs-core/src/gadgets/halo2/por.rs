@@ -4,7 +4,7 @@ use filecoin_hashers::{Domain, HaloHasher, PoseidonArity};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter},
-    plonk::{self, ConstraintSystem},
+    plonk::{ConstraintSystem, Error},
 };
 
 use crate::{
@@ -83,10 +83,7 @@ where
         challenge_bits: &[AssignedBit<<H::Domain as Domain>::Field>],
         leaf: &Option<<H::Domain as Domain>::Field>,
         path: &[Vec<Option<<H::Domain as Domain>::Field>>],
-    ) -> Result<
-        AssignedCell<<H::Domain as Domain>::Field, <H::Domain as Domain>::Field>,
-        plonk::Error,
-    > {
+    ) -> Result<AssignedCell<<H::Domain as Domain>::Field, <H::Domain as Domain>::Field>, Error> {
         let base_arity = U::to_usize();
         let sub_arity = V::to_usize();
         let top_arity = W::to_usize();
@@ -414,7 +411,7 @@ mod test {
             &self,
             config: Self::Config,
             mut layouter: impl Layouter<<H::Domain as Domain>::Field>,
-        ) -> Result<(), plonk::Error> {
+        ) -> Result<(), Error> {
             let chip = MerkleChip::construct(config.merkle.clone());
 
             // Allocate the challenge bits.
@@ -430,7 +427,7 @@ mod test {
                                 || format!("challenge bit {}", i),
                                 config.advice_eq[i],
                                 row,
-                                || opt.map(Bit).ok_or(plonk::Error::Synthesis),
+                                || opt.map(Bit).ok_or(Error::Synthesis),
                             )
                         })
                         .collect()

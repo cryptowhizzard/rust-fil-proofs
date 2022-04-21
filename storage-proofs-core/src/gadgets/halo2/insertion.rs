@@ -6,7 +6,7 @@ use halo2_gadgets::utilities::ternary;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter},
-    plonk::{self, Advice, Assigned, Column, ConstraintSystem, Expression, Selector},
+    plonk::{Advice, Assigned, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
 };
 
@@ -247,7 +247,7 @@ where
         uninserted: &[Option<T>],
         value: &AssignedCell<T, F>,
         index_bits: &[AssignedBit<F>],
-    ) -> Result<Vec<AssignedCell<T, F>>, plonk::Error>
+    ) -> Result<Vec<AssignedCell<T, F>>, Error>
     where
         T: Clone,
         for<'t> Assigned<F>: From<&'t T>,
@@ -294,7 +294,7 @@ where
                         || format!("uninserted {}", i),
                         self.config.uninserted[i],
                         row,
-                        || opt.clone().ok_or(plonk::Error::Synthesis),
+                        || opt.clone().ok_or(Error::Synthesis),
                     )?;
                 }
 
@@ -307,7 +307,7 @@ where
                             || format!("inserted {}", i),
                             self.config.inserted[i],
                             row,
-                            || opt.cloned().ok_or(plonk::Error::Synthesis),
+                            || opt.cloned().ok_or(Error::Synthesis),
                         )
                     })
                     .collect()
@@ -321,7 +321,7 @@ where
         uninserted: &[Option<T>],
         value: &Option<T>,
         index_bits: &[AssignedBit<F>],
-    ) -> Result<Vec<AssignedCell<T, F>>, plonk::Error>
+    ) -> Result<Vec<AssignedCell<T, F>>, Error>
     where
         T: Clone,
         for<'t> Assigned<F>: From<&'t T>,
@@ -364,7 +364,7 @@ where
                     || "value",
                     self.config.value,
                     row,
-                    || value.clone().ok_or(plonk::Error::Synthesis),
+                    || value.clone().ok_or(Error::Synthesis),
                 )?;
 
                 // Allocate uninserted array.
@@ -373,7 +373,7 @@ where
                         || format!("uninserted {}", i),
                         self.config.uninserted[i],
                         row,
-                        || opt.clone().ok_or(plonk::Error::Synthesis),
+                        || opt.clone().ok_or(Error::Synthesis),
                     )?;
                 }
 
@@ -386,7 +386,7 @@ where
                             || format!("inserted {}", i),
                             self.config.inserted[i],
                             row,
-                            || opt.cloned().ok_or(plonk::Error::Synthesis),
+                            || opt.cloned().ok_or(Error::Synthesis),
                         )
                     })
                     .collect()
@@ -401,7 +401,7 @@ pub fn insert<T, F>(
     uninserted: &[Option<T>],
     value: &AssignedCell<T, F>,
     index_bits: &[AssignedBit<F>],
-) -> Result<Vec<AssignedCell<T, F>>, plonk::Error>
+) -> Result<Vec<AssignedCell<T, F>>, Error>
 where
     T: Clone,
     for<'t> Assigned<F>: From<&'t T>,
@@ -422,7 +422,7 @@ pub fn assign_value_then_insert<T, F>(
     uninserted: &[Option<T>],
     value: &Option<T>,
     index_bits: &[AssignedBit<F>],
-) -> Result<Vec<AssignedCell<T, F>>, plonk::Error>
+) -> Result<Vec<AssignedCell<T, F>>, Error>
 where
     T: Clone,
     for<'t> Assigned<F>: From<&'t T>,
@@ -513,7 +513,7 @@ mod test {
             &self,
             config: Self::Config,
             mut layouter: impl Layouter<F>,
-        ) -> Result<(), plonk::Error> {
+        ) -> Result<(), Error> {
             let chip = InsertChip::<F, A>::construct(config.insert.clone());
 
             let (value, index_bits) = layouter.assign_region(
@@ -526,7 +526,7 @@ mod test {
                         || "value",
                         config.advice_eq[0],
                         row,
-                        || self.value.ok_or(plonk::Error::Synthesis),
+                        || self.value.ok_or(Error::Synthesis),
                     )?;
 
                     // Allocate insertion index.
@@ -538,10 +538,10 @@ mod test {
                                 || format!("index bit {}", i),
                                 config.advice_eq[1 + i],
                                 row,
-                                || opt.map(Bit).ok_or(plonk::Error::Synthesis),
+                                || opt.map(Bit).ok_or(Error::Synthesis),
                             )
                         })
-                        .collect::<Result<Vec<AssignedBit<F>>, plonk::Error>>()?;
+                        .collect::<Result<Vec<AssignedBit<F>>, Error>>()?;
 
                     Ok((value, index_bits))
                 },
